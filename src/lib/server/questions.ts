@@ -5,9 +5,10 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import { db, all, one, run, transaction, iso } from './db';
 import { dedupMode } from './deduplication';
+import { suggestAnswer } from './answer-suggestions';
 import { serialize } from './reports';
 import { ApiError, parse, uuid, checkIdentity, jsonBody } from './validation';
-import { questionDepartments, type Question, type QuestionResult, type DedupMethod } from '@/types/domain';
+import { questionDepartments, type Question, type QuestionResult, type DedupMethod, type QuestionSubmission } from '@/types/domain';
 
 // Also runs after hot reload against an existing connection; never recreates facility tables.
 let initialized = false;
@@ -29,6 +30,17 @@ function get(id: string, clientId: string) {
   const q = list(clientId).find(q => q.id === id);
   if (!q) throw new ApiError(404, 'QUESTION_NOT_FOUND', '요청을 찾을 수 없어요.');
   return q;
+}
+function submissions(questionId: string): QuestionSubmission[] {
+  return all<QuestionSubmission>(`SELECT s.id,s.title,s.description,s.created_at AS createdAt,s.dedup_method AS dedupMethod,
+    a.answer,a.status AS answerStatus,COALESCE(a.revision,0) AS answerRevision,a.updated_at AS answeredAt
+    FROM question_submissions s LEFT JOIN question_submission_answers a ON a.submission_id=s.id
+    WHERE s.question_id=? ORDER BY s.created_at,s.id`, questionId);
+}
+function submission(questionId: string, id: string) {
+  const item = submissions(questionId).find(s => s.id === id);
+  if (!item) throw new ApiError(404, 'SUBMISSION_NOT_FOUND', '이 묶음에 속한 원문을 찾을 수 없어요.');
+  return item;
 }
 const inputSchema = z.object({
   requestId: uuid, clientId: uuid, department: z.enum(questionDepartments),
@@ -70,7 +82,7 @@ export async function handleQuestions(req: Request, segments: string[], clientId
   if (req.method === 'GET' && parts.length === 1) return json({ questions: list(clientId), dedupMode: dedupMode() });
   if (req.method === 'GET' && parts.length === 2) {
     const question = get(parts[1], clientId);
-    return json({ question, ...(admin ? { submissions: all(`SELECT id,title,description,created_at AS createdAt,dedup_method AS dedupMethod FROM question_submissions WHERE question_id=? ORDER BY created_at,id`, question.id) } : {}) });
+    return json({ question, submissions: submissions(question.id) });
   }
   if (!admin && req.method === 'POST' && parts.length === 1) {
     const input = parse(inputSchema, await jsonBody(req)); checkIdentity(req, input.clientId);
@@ -100,6 +112,26 @@ export async function handleQuestions(req: Request, segments: string[], clientId
       get(parts[1], input.clientId);
       run('INSERT OR IGNORE INTO question_participations VALUES (?,?,?)', parts[1], input.clientId, iso(Date.now()));
       return { question: get(parts[1], input.clientId) };
+    }));
+  }
+  if (admin && req.method === 'POST' && parts.length === 5 && parts[2] === 'submissions' && parts[4] === 'suggestion') {
+    return serialize(`answer-suggestion:${parts[3]}`, async () => {
+      const question = get(parts[1], clientId);
+      const draft = await suggestAnswer(question, submission(question.id, parts[3]));
+      if (get(question.id, clientId).updatedAt !== draft.sourceUpdatedAt) throw new ApiError(409, 'ANSWER_CHANGED', '추천 중 공통 답변이 변경됐어요. 새로고침 후 다시 추천해 주세요.');
+      return json({ suggestion: draft });
+    });
+  }
+  if (admin && req.method === 'PATCH' && parts.length === 4 && parts[2] === 'submissions') {
+    const input = parse(z.object({ answer: z.string().trim().min(5).max(5000), status: z.enum(['answered','needs_clarification']),
+      revision: z.number().int().min(0), sourceUpdatedAt: z.string() }).strict(), await jsonBody(req));
+    return json(transaction(() => {
+      const question = get(parts[1], clientId), item = submission(question.id, parts[3]);
+      if (item.answerRevision !== input.revision || question.updatedAt !== input.sourceUpdatedAt) throw new ApiError(409, 'ANSWER_CHANGED', '답변이 변경됐어요. 새로고침 후 최신 내용을 확인해 주세요.');
+      run(`INSERT INTO question_submission_answers (submission_id,answer,status,revision,updated_at) VALUES (?,?,?,?,?)
+        ON CONFLICT(submission_id) DO UPDATE SET answer=excluded.answer,status=excluded.status,revision=excluded.revision,updated_at=excluded.updated_at`,
+        item.id, input.answer, input.status, item.answerRevision + 1, iso(Date.now()));
+      return { submission: submission(question.id, item.id) };
     }));
   }
   if (admin && req.method === 'PATCH' && parts.length === 2) {

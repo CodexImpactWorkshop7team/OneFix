@@ -29,3 +29,11 @@ CREATE TABLE IF NOT EXISTS question_participations (
 );
 CREATE INDEX IF NOT EXISTS questions_scope ON questions(department,period,created_at);
 CREATE INDEX IF NOT EXISTS question_submissions_group ON question_submissions(question_id,created_at);
+
+CREATE TABLE IF NOT EXISTS question_submission_answers (
+  submission_id TEXT PRIMARY KEY NOT NULL REFERENCES question_submissions(id),
+  answer TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('answered','needs_clarification')),
+  revision INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);

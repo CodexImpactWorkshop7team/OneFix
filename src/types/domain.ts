@@ -51,5 +51,10 @@ export type Question = {
   answer: string | null; answeredAt: string | null; updatedAt: string; createdAt: string;
   interestedCount: number; submissionCount: number; hasParticipated: boolean;
 };
-export type QuestionSubmission = { id: string; title: string; description: string; createdAt: string; dedupMethod: DedupMethod };
+export type QuestionSubmission = { id: string; title: string; description: string; createdAt: string; dedupMethod: DedupMethod; answer: string | null; answerStatus: 'answered' | 'needs_clarification' | null; answerRevision: number; answeredAt: string | null };
 export type QuestionResult = { question: Question; merged: boolean; dedupMethod: DedupMethod };
+
+export type AnswerSuggestion = {
+  answer: string; status: 'answered' | 'needs_clarification'; reason: string; missingInfo: string[];
+  mode: 'openai' | 'mock'; sourceUpdatedAt: string;
+};
