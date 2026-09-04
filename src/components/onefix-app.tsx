@@ -60,6 +60,7 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
         <Link href="/" className={`nav-item ${['home', 'facility', 'report'].includes(view) ? 'active' : ''}`}><Building2 size={20} />설비 요청<span className="nav-count">{catalog?.facilities.length || 3}</span></Link>
         <Link href="/questions" className={`nav-item ${view === 'questions' ? 'active' : ''}`}><Users size={20} />행정 요청<span className="nav-new">NEW</span></Link>
         <Link href="/requests" className={`nav-item ${view === 'request' ? 'active' : ''}`}><Plus size={20} />새 요청 등록</Link>
+        <a href="#access-qr" className="nav-item"><QrCode size={20} />QR로 접속하기</a>
         {authenticated && <><Link href="/admin/questions" className={`nav-item ${view === 'question-admin' ? 'active' : ''}`}><CheckCheck size={20} />행정 요청 관리</Link>
         <Link href="/admin" className={`nav-item ${view === 'admin' ? 'active' : ''}`}><ClipboardList size={20} />설비 요청 관리<ChevronRight size={16} className="nav-chevron" /></Link>
         <Link href="/admin#predictions" className="nav-item"><BarChart3 size={20} />예방 점검<span className="nav-new">NEW</span></Link></>}
@@ -115,6 +116,7 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
           <div className="admin-issues">{admin.issues.map((issue, index) => <AdminRow key={`${issue.id}-${generation}`} issue={issue} rank={index + 1} onChange={refresh} />)}{!admin.issues.length && <div className="panel empty-state"><CheckCheck size={30} /><h3>{tab === 'open' ? '미해결 고장이 없어요' : '아직 해결된 고장이 없어요'}</h3></div>}</div>
           {catalog.meta.features.predictions && <PredictionSection generation={generation} />}
         </>}
+        <section id="access-qr" className="panel access-qr" aria-labelledby="access-qr-title"><div className="access-qr-copy"><div className="eyebrow">SCAN TO OPEN</div><h2 id="access-qr-title">QR로 접속하기</h2><p>휴대폰 카메라로 QR 코드를 스캔해 주세요.</p><a className="button secondary" href="/access-qr.png" target="_blank" rel="noreferrer"><QrCode size={17} />QR 크게 보기<ArrowUpRight size={16} /></a></div><a className="access-qr-image" href="/access-qr.png" target="_blank" rel="noreferrer" aria-label="접속 QR 코드 원본 보기"><img src="/access-qr.png" width={224} height={224} alt="휴대폰으로 스캔할 접속 QR 코드" /></a></section>
         <footer className="footer"><span><Wrench size={13} /> OneFix <span className="footer-dot">·</span> 같은 문제, 하나의 해결</span><span>함께 만드는 더 편리한 캠퍼스</span></footer>
       </main>
     </div>
