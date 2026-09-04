@@ -1,6 +1,6 @@
 # 개발 환경·구조
 
-이 문서는 구현 계약이다. 명령·파일은 앱 초기화 후 마련해야 하며 아직 존재한다고 가정하지 않는다.
+이 문서는 MVP의 개발 환경과 구현 계약이다. 현재 실행 방법은 README의 `바로 실행`을 따른다. 초기 구현에서 의존성을 줄이기 위해 Node 내장 SQLite를 사용하고, HTTP 처리는 하나의 catch-all Route Handler로 모았다.
 
 ## 기술 결정
 
@@ -8,13 +8,13 @@
 | --- | --- | --- |
 | 앱 | Next.js App Router, TypeScript strict, Tailwind CSS | 화면과 API를 한 프로젝트에서 구현 |
 | API | Route Handler, Node.js 런타임, 동일 출처 호출 | 별도 서버·CORS 구성 생략 |
-| 저장소 | SQLite + `better-sqlite3`, 직접 SQL | 작은 단일 프로세스 데모, ORM 설정 생략 |
+| 저장소 | Node 내장 `node:sqlite`, 직접 SQL | 별도 네이티브 패키지·DB 서버·ORM 없이 파일 저장 |
 | 검증 | Zod 등 단일 검증 모듈로 서버 입력 검사 | 폼과 서버의 규칙 차이 축소 |
 | AI | OpenAI 공식 JS SDK, Responses API, 구조화 출력 | 제한된 ID/null 결과만 사용 |
 | 예측 | 서버의 순수 집계 함수 | 외부 호출·학습 없이 재현 가능한 결과 |
 | QR | URL에서 생성하는 QR 라이브러리 | 외부 QR 서비스 불필요 |
 
-한 맥북의 작업 폴더에서 실행 가능한 라이브러리 조합을 설치한 뒤 `package-lock.json`과 Node 버전 파일 `.nvmrc`에 고정한다. 패키지 관리자는 npm으로 통일하고 재설치 시 `npm ci`를 사용한다. 설치된 Next.js·SQLite 드라이버가 선택한 Node 버전을 지원하는지 최초 실행에서 확인한다.
+Node 22.13 이상에서 실행하며 사용한 Node 버전은 `.nvmrc`, 패키지 버전은 `package-lock.json`에 기록한다. 패키지 관리자는 npm으로 통일하고 재설치 시 `npm ci`를 사용한다.
 
 ## 목표 폴더
 
@@ -25,7 +25,7 @@ src/
     facilities/[id]/page.tsx
     facilities/[id]/report/page.tsx
     admin/page.tsx
-    api/                         # api.md의 모든 HTTP 경로
+    api/[...path]/route.ts        # api.md의 HTTP 경로를 한 파일에서 처리
   components/                    # 카드, 상태 배지, 폼, 예측 카드
   types/domain.ts                # API DTO, 상태·증상 enum
   lib/client/                    # 익명 ID, fetch 래퍼
@@ -34,7 +34,7 @@ src/
     reports.ts                   # 신고·참여 서비스와 시설별 직렬화
     deduplication.ts             # AI 어댑터, mock, fallback
     predictions.ts               # 기준일을 인자로 받는 순수 계산
-    uploads.ts                   # 검증·파일 저장·조회
+                                 # 업로드 저장은 reports.ts, 조회는 API에 포함
     validation.ts                # 서버 입력 검증
 scripts/                         # DB 초기화·시드
 data/                            # git 제외: DB, 업로드
@@ -54,10 +54,10 @@ DB·파일·API 키를 다루는 코드는 서버 전용으로 제한한다. 사
 | `OPENAI_API_KEY` | 빈 값 | openai 모드일 때만 필요, 커밋 금지 |
 | `OPENAI_MODEL` | 빈 값 | 초기화 때 계정에서 사용 가능한 구조화 출력 지원 모델을 정해 기록 |
 | `AI_TIMEOUT_MS` | `8000` | AI 1회 호출 제한, SDK 자동 재시도 끔 |
-| `FEATURE_PHOTOS` | `false` | P1 사진 구현 완료 후 true |
-| `FEATURE_PREDICTIONS` | `false` | P1 예측 구현 완료 후 true |
+| `FEATURE_PHOTOS` | `true` | false로 사진 입력·조회를 끌 수 있음 |
+| `FEATURE_PREDICTIONS` | `true` | false로 예측 카드를 끌 수 있음 |
 
-시작 시 openai 모드인데 키·모델이 없으면 설정 오류를 명확히 안내한다. mock으로 몰래 바꾸지 않는다. 키는 서버 환경에만 읽고 어떤 `NEXT_PUBLIC_*` 변수에도 넣지 않는다. 응답·로그에 키나 신고 원문·사진을 출력하지 않는다.
+openai 모드에서 키·모델이 없거나 호출이 실패하면 별도 신고로 접수하고 중복 확인 실패를 안내한다. mock으로 몰래 바꾸지 않는다. 키는 서버 환경에만 읽고 어떤 `NEXT_PUBLIC_*` 변수에도 넣지 않는다. 응답·로그에 키나 신고 원문·사진을 출력하지 않는다.
 
 `.env.example`에는 이름·빈 비밀값만 커밋한다. `.env*`(예시 제외), `data/`, `.next/`, `node_modules/`, 테스트 임시 파일은 `.gitignore`에 둔다. 파일 기반 저장이므로 이 구성으로 서버리스 배포를 가정하지 않는다.
 
@@ -90,7 +90,7 @@ DB·파일·API 키를 다루는 코드는 서버 전용으로 제한한다. 사
 
 mutex는 개발 핫리로드 중 중복 인스턴스가 생기지 않게 서버 전역 모듈에서 공유한다. DB 연결마다 외래키를 켜고, 트랜잭션은 짧게 유지한다. SQLite busy timeout은 3초이며 실패하면 재시도 가능한 503을 반환한다.
 
-파일은 검증 후 임시 저장, 트랜잭션 직전에 최종 경로로 이동한다. DB 커밋 실패 시 해당 파일을 지우며, 프로세스 중단으로 생긴 미참조 파일은 데모 초기화로 정리한다. 앱이 없는 파일을 성공적으로 첨부했다고 응답하지 않는다.
+최대 5MiB 사진을 메모리에서 검사한 후 짧은 신고 트랜잭션 안에서 UUID 파일명으로 저장한다. DB 커밋 실패 시 해당 파일을 지우며, 프로세스 중단으로 생긴 미참조 파일은 데모 초기화로 정리한다. 앱이 없는 파일을 성공적으로 첨부했다고 응답하지 않는다.
 
 ## 성능·관측 목표
 

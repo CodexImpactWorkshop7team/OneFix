@@ -1,0 +1,42 @@
+export const statuses = ['reported', 'acknowledged', 'in_progress', 'resolved'] as const;
+export type Status = typeof statuses[number];
+export const statusLabels: Record<Status, string> = {
+  reported: '접수됨', acknowledged: '확인 완료', in_progress: '처리 중', resolved: '해결됨',
+};
+export const symptoms = ['not_working', 'poor_performance', 'physical_damage', 'leak_or_noise', 'other'] as const;
+export type Symptom = typeof symptoms[number];
+export const symptomLabels: Record<Symptom, string> = {
+  not_working: '작동 안 됨', poor_performance: '성능 이상', physical_damage: '부품 파손',
+  leak_or_noise: '누수 · 소음', other: '기타',
+};
+export type DedupMethod = 'none' | 'ai' | 'mock' | 'fallback';
+export type Facility = { id: string; name: string; location: string; kind: 'printer' | 'air_conditioner' | 'water_dispenser' };
+export type Issue = {
+  id: string; facilityId: string; symptom: Symptom; description: string; status: Status;
+  etaText: string | null; affectedCount: number; hasParticipated: boolean;
+  createdAt: string; updatedAt: string; resolvedAt: string | null;
+};
+export type AdminIssue = Issue & { facility: Facility };
+export type Report = {
+  id: string; issueId: string; symptom: Symptom; description: string; createdAt: string;
+  dedupMethod: DedupMethod; merged: boolean;
+  photo: { id: string; url: string; mimeType: string; byteSize: number } | null;
+};
+export type Meta = { dedupMode: 'mock' | 'openai'; datasetKind: 'live' | 'synthetic'; features: { photos: boolean; predictions: boolean } };
+export type FacilityList = { facilities: (Facility & { openIssueCount: number; url: string })[]; meta: Meta };
+export type FacilityDetail = { facility: Facility; issues: Issue[]; recentlyResolvedIssues: Issue[] };
+export type AdminList = { issues: AdminIssue[]; counts: { open: number; inProgress: number; resolved: number } };
+export type ReportResult = { reportId: string; issueId: string; merged: boolean; affectedCount: number; dedupMethod: DedupMethod; noticeCode: 'MOCK_MODE' | 'DEDUP_UNAVAILABLE' | null };
+export type PredictionItem = {
+  facility: Facility; observedDays: number; openIssueCount: number;
+  forecast: {
+    status: 'ready' | 'insufficient_data'; expectedReports7d: number | null;
+    weeklyCounts: [number, number, number, number] | null; reportCount28d: number | null;
+    reasonCode: 'OK' | 'OBSERVATION_TOO_SHORT' | 'TOO_FEW_REPORTS';
+  };
+  recurrence: {
+    status: 'ready' | 'insufficient_data'; level: 'low' | 'medium' | 'high' | null;
+    issueCount30d: number | null; reasonCode: 'OK' | 'OBSERVATION_TOO_SHORT';
+  };
+};
+export type Predictions = { asOf: string; asOfDate: string; generatedAt: string; timezone: 'Asia/Seoul'; methodVersion: 'history-v1'; datasetKind: 'live' | 'synthetic'; items: PredictionItem[] };
