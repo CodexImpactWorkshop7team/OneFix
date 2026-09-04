@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Check, ChevronDown, LoaderCircle, MessageCircle, Send, Sparkles } from 'lucide-react';
 import { api } from '@/lib/client/api';
@@ -17,7 +16,7 @@ export default function SubmissionAnswers({ question, admin, refreshKey }: { que
     return () => { active = false; };
   }, [question.id, question.submissionCount, admin, refreshKey, attempt]);
   return <section className="submission-list"><div className="section-heading"><div><h3>취합된 요청 <span className="count-tag">{question.submissionCount}</span></h3><p>원문을 펼쳐 각 상황과 개별 답변을 확인하세요.</p></div></div>
-    {!admin && <Link className="text-link submission-admin-link" href={`/admin/questions?id=${question.id}`}>담당자 화면에서 원문별 AI 답변 추천 <Sparkles size={14} /></Link>}
+
     {error && <div className="notice" role="alert">{error}<button className="text-button" onClick={() => setAttempt(n => n + 1)}>다시 불러오기</button></div>}
     {!items && !error && <p className="muted">원문을 불러오는 중…</p>}
     {items?.map((item, index) => <SubmissionAnswer key={`${item.id}-${item.answerRevision}`} question={question} item={item} number={index + 1} admin={admin} onSaved={saved => setItems(list => list!.map(s => s.id === saved.id ? saved : s))} />)}

@@ -7,8 +7,8 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, BarChart3, Building2, C
 import { api, clientId, makeId, RequestError } from '@/lib/client/api';
 import { statuses, statusLabels, symptoms, symptomLabels, type AdminIssue, type AdminList, type Facility, type FacilityDetail, type FacilityList, type Issue, type Predictions, type Report, type ReportResult, type Status, type Symptom } from '@/types/domain';
 
-type View = 'home' | 'facility' | 'report' | 'admin' | 'questions' | 'question-admin';
-const title = { home: '시설 현황', facility: '시설 상세', report: '시설 요청', admin: '관리자 대시보드', questions: '행정 요청', 'question-admin': '행정 요청 관리' };
+type View = 'home' | 'facility' | 'report' | 'admin' | 'questions' | 'question-admin' | 'request';
+const title = { home: '시설 현황', facility: '시설 상세', report: '시설 요청', admin: '관리자 대시보드', questions: '행정 요청', 'question-admin': '행정 요청 관리', request: '요청 등록' };
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '다시 시도해 주세요.';
 const date = (value: string) => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
 
@@ -21,6 +21,7 @@ function Notice({ children }: { children: React.ReactNode }) { return <div class
 function Loading() { return <div className="loading"><LoaderCircle size={24} className="spin" /><span>시설 상태를 불러오고 있어요</span></div>; }
 
 export default function OneFixApp({ view, facilityId }: { view: View; facilityId?: string }) {
+  const [authenticated, setAuthenticated] = useState(false);
   const [catalog, setCatalog] = useState<FacilityList | null>(null);
   const [admin, setAdmin] = useState<AdminList | null>(null);
   const [detail, setDetail] = useState<FacilityDetail | null>(null);
@@ -35,14 +36,18 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
     try {
       const [facilities, nextAdmin, nextDetail] = await Promise.all([
         api<FacilityList>('facilities'),
-        view === 'home' || view === 'admin' ? api<AdminList>(`admin/issues?state=${view === 'home' ? 'open' : tab}`) : Promise.resolve(null),
+        view === 'home' || view === 'admin' ? api<AdminList>(view === 'home' ? 'overview' : `admin/issues?state=${tab}`) : Promise.resolve(null),
         facilityId ? api<FacilityDetail>(`facilities/${facilityId}`) : Promise.resolve(null),
       ]);
       setCatalog(facilities); setAdmin(nextAdmin); setDetail(nextDetail); setGeneration(n => n + 1);
     } catch (error) { setError(errorMessage(error)); }
     finally { setBusy(false); }
   }, [view, facilityId, tab]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); api<{ authenticated: boolean }>('auth/session').then(r => setAuthenticated(r.authenticated)).catch(() => setAuthenticated(false)); }, [refresh]);
+  async function logout() {
+    try { await api('auth/logout', { method: 'POST' }); window.location.assign('/'); }
+    catch (e) { setError(errorMessage(e)); }
+  }
   useEffect(() => { const listener = () => setStorageWarning(true); window.addEventListener('onefix-storage-unavailable', listener); return () => window.removeEventListener('onefix-storage-unavailable', listener); }, []);
 
   return <div className="app-shell">
@@ -51,27 +56,29 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
       <div className="workspace"><div className="workspace-icon"><Building2 size={19} /></div><div><strong>우리 캠퍼스</strong><span>캠퍼스 소통 워크스페이스</span></div></div>
       <div className="nav-label">WORKSPACE</div>
       <nav aria-label="주 메뉴">
-        <Link href="/" className={`nav-item ${['home', 'facility', 'report'].includes(view) ? 'active' : ''}`}><Building2 size={20} />시설 현황<span className="nav-count">{catalog?.facilities.length || 3}</span></Link>
+        <Link href="/" className={`nav-item ${['home', 'facility', 'report'].includes(view) ? 'active' : ''}`}><Building2 size={20} />요청 센터<span className="nav-count">{catalog?.facilities.length || 3}</span></Link>
         <Link href="/questions" className={`nav-item ${view === 'questions' ? 'active' : ''}`}><Users size={20} />행정 요청<span className="nav-new">NEW</span></Link>
-        <Link href="/admin/questions" className={`nav-item ${view === 'question-admin' ? 'active' : ''}`}><CheckCheck size={20} />행정 요청 관리</Link>
+        <Link href="/requests" className={`nav-item ${view === 'request' ? 'active' : ''}`}><Plus size={20} />새 요청 등록</Link>
+        {authenticated && <><Link href="/admin/questions" className={`nav-item ${view === 'question-admin' ? 'active' : ''}`}><CheckCheck size={20} />행정 요청 관리</Link>
         <Link href="/admin" className={`nav-item ${view === 'admin' ? 'active' : ''}`}><ClipboardList size={20} />시설 요청 관리<ChevronRight size={16} className="nav-chevron" /></Link>
-        <Link href="/admin#predictions" className="nav-item"><BarChart3 size={20} />예방 점검<span className="nav-new">NEW</span></Link>
+        <Link href="/admin#predictions" className="nav-item"><BarChart3 size={20} />예방 점검<span className="nav-new">NEW</span></Link></>}
       </nav>
-      <div className="sidebar-tip"><span className="tip-symbol"><QrCode size={25} /></span><strong>시설 앞에서, 바로 확인</strong><p>QR 하나로 시설 요청와<br />처리 현황을 함께 확인해요.</p></div>
-      <div className="sidebar-bottom"><span className="avatar">OF</span><div><strong>OneFix 워크샵</strong><span>로컬 데모 워크스페이스</span></div><span className="online-dot" /></div>
+      <div className="sidebar-tip"><span className="tip-symbol"><QrCode size={25} /></span><strong>시설 앞에서, 바로 확인</strong><p>QR 하나로 시설 요청과<br />처리 현황을 함께 확인해요.</p></div>
+      <div className="sidebar-bottom"><span className="avatar">OF</span><div><strong>OneFix</strong><span>함께 해결하는 요청 센터</span></div><span className="online-dot" /></div>
     </aside>
 
     <div className="main-shell">
-      <header className="topbar"><div className="breadcrumb"><span>워크스페이스</span><ChevronRight size={14} /><strong>{title[view]}</strong></div><div className="topbar-right"><span className="local-status"><span className="online-dot" />로컬 데모</span><span className="small-avatar">OF</span></div></header>
+      <header className="topbar"><div className="breadcrumb"><span>워크스페이스</span><ChevronRight size={14} /><strong>{title[view]}</strong></div><div className="topbar-right">{authenticated ? <><Link className="text-link" href="/admin">관리자 대시보드</Link><button className="button secondary" onClick={() => void logout()}>로그아웃</button></> : <Link className="button secondary" href="/login">관리자 로그인</Link>}</div></header>
       <main className="main-content">
         {storageWarning && <Notice>이 브라우저에서 사용자 정보를 저장할 수 없어 새로고침 후 중복 참여 방지가 제한될 수 있어요.</Notice>}
-        {catalog?.meta.dedupMode === 'mock' && <div className="demo-strip"><Sparkles size={14} /><span>데모 병합 모드 <span className="demo-divider">·</span> 정해진 예시 문장으로 중복 요청를 확인합니다.</span>{catalog.meta.datasetKind === 'synthetic' && <span className="demo-label">샘플 데이터</span>}</div>}
+        {catalog?.meta.dedupMode === 'mock' && <div className="demo-strip"><Sparkles size={14} /><span>데모 병합 모드 <span className="demo-divider">·</span> 정해진 예시 문장으로 중복 요청을 확인합니다.</span>{catalog.meta.datasetKind === 'synthetic' && <span className="demo-label">샘플 데이터</span>}</div>}
         {error && <Notice>{error} <button className="text-button" onClick={() => void refresh()}>다시 시도</button></Notice>}
         {!catalog && !error ? <Loading /> : null}
-        {(view === 'questions' || view === 'question-admin') && <QuestionsBoard key={view} admin={view === 'question-admin'} />}
+        {catalog && view === 'request' && <><div className="page-heading"><div><div className="eyebrow">NEW REQUEST</div><h1>어떤 도움이 필요하세요?</h1><p>로그인 없이 요청을 남기고, 진행 상황과 답변을 확인할 수 있어요.</p></div></div><div className="request-options"><section className="panel request-option"><Wrench size={28} /><h2>시설 요청</h2><p>고장이나 이용 중 불편한 시설을 선택해 주세요.</p>{catalog.facilities.map(f => <Link key={f.id} className="request-facility" href={`/facilities/${f.id}/report`}><span><strong>{f.name}</strong><small>{f.location}</small></span><ArrowRight size={17} /></Link>)}</section><section className="panel request-option"><Users size={28} /><h2>행정 요청</h2><p>학사, 장학금, 신청 절차 등 궁금한 내용을 담당 부서에 물어보세요.</p><Link className="button primary full" href="/questions?new=1">행정 요청 작성<ArrowRight size={17} /></Link><Link className="text-link" href="/questions">이미 올라온 요청과 답변 보기<ArrowRight size={14} /></Link></section></div></>}
+        {(view === 'questions'  || view === 'question-admin') && <QuestionsBoard key={view} admin={view === 'question-admin'} />}
         {catalog && view === 'home' && admin && <>
-          <div className="page-heading"><div><div className="eyebrow">FACILITY OVERVIEW</div><h1>시설 상태를 한눈에.</h1><p>같은 불편은 하나로 모으고, 해결 상황은 함께 확인하세요.</p></div><button className="button secondary" onClick={() => void refresh()} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} />새로고침</button></div>
-          <Link className="q-home-link" href="/questions"><Users size={22} /><div><strong>고장 말고, 궁금한 점도 함께 물어보세요.</strong><span>비슷한 요청을 모아 담당 부서의 답변을 함께 확인해요.</span></div><ArrowRight size={20} /></Link>
+          <div className="page-heading"><div><div className="eyebrow">ONE PLACE, EVERY REQUEST</div><h1>불편도 궁금증도, 한곳에서.</h1><p>시설과 행정 요청을 모아, 해결 상황과 담당자의 답변을 함께 확인하세요.</p></div><button className="button secondary" onClick={() => void refresh()} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} />새로고침</button></div>
+          <Link className="q-home-link" href="/requests"><Plus size={25} /><div><strong>새 요청 등록하기</strong><span>시설 고장 · 이용 불편 · 학사 · 장학 · 생활행정</span></div><ArrowRight size={20} /></Link>
           <div className="stats-grid"><Stat label="등록된 시설" value={catalog.facilities.length} unit="곳" icon={<Building2 />} note="우리 캠퍼스의 공용 시설" /><Stat label="확인이 필요한 고장" value={admin.counts.open} unit="건" icon={<CircleAlert />} note="같은 문제는 하나로 모았어요" accent /><Stat label="처리 중" value={admin.counts.inProgress} unit="건" icon={<Wrench />} note="관리자가 해결하고 있어요" /><Stat label="해결 완료" value={admin.counts.resolved} unit="건" icon={<CheckCheck />} note="다시 편리하게 이용하세요" /></div>
           <div className="section-heading" id="facilities"><div><h2>우리 캠퍼스 시설 <span className="count-tag">{catalog.facilities.length}</span></h2><p>이용 중인 시설을 선택해 주세요.</p></div><span className="sort-caption"><span className="online-dot" />현재 접수 현황</span></div>
           <div className="facility-grid">{catalog.facilities.map(f => {
@@ -84,7 +91,7 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
             </article>;
           })}</div>
           <div className="bottom-banner"><div className="banner-icon"><CheckCheck size={28} /></div><div><h3>이미 접수된 문제라면, 한 번의 클릭으로.</h3><p>‘나도 겪고 있어요’를 누르면 영향 인원이 늘어나 관리자에게 전달돼요.</p></div><ArrowUpRight size={24} /></div>
-          <div className="section-heading"><div><h2>처리 현황</h2><p>현재 접수된 고장의 진행 상황입니다.</p></div><Link className="text-link" href="/admin">관리자 화면<ArrowRight size={15} /></Link></div>
+          <div className="section-heading"><div><h2>처리 현황</h2><p>현재 접수된 고장의 진행 상황입니다.</p></div>{authenticated && <Link className="text-link" href="/admin">관리자 화면<ArrowRight size={15} /></Link>}</div>
           <div className="overview-table">{admin.issues.length ? admin.issues.slice(0, 5).map(i => <Link key={i.id} href={`/facilities/${i.facilityId}`} className="overview-row"><div className="mini-facility-icon"><FacilityIcon kind={i.facility.kind} size={19} /></div><div className="overview-title"><strong>{i.facility.name}</strong><span>{symptomLabels[i.symptom]}</span></div><Badge status={i.status} /><span className="overview-eta"><Clock3 size={15} />{i.etaText || '예상 처리 미정'}</span><span className="overview-count"><Users size={16} />{i.affectedCount}명</span><ChevronRight size={18} /></Link>) : <div className="empty-state compact"><CheckCheck /><h3>접수된 고장이 없어요</h3></div>}</div>
         </>}
 
@@ -146,7 +153,7 @@ function ReportForm({ facility, photos }: { facility: Facility; photos: boolean 
   }
   if (result) return <div className="success-page panel"><div className="success-ring large"><Check size={38} /></div><span className="eyebrow">REPORT RECEIVED</span><h1>{result.merged ? '같은 시설 요청에 합쳐졌어요.' : '시설 요청이 접수됐어요.'}</h1><p>{facility.name}의 불편을 알려 주셔서 감사합니다.<br />처리 상황은 시설 페이지에서 확인할 수 있어요.</p><div className="success-count"><Users size={24} /><strong>{result.affectedCount}명</strong>이 함께 겪고 있어요</div>{result.noticeCode === 'DEDUP_UNAVAILABLE' && <Notice>중복 확인이 지연되어 별도 요청으로 접수했어요.</Notice>}{result.noticeCode === 'MOCK_MODE' && <p className="muted small">데모 규칙으로 중복 여부를 확인했습니다.</p>}<Link className="button primary" href={`/facilities/${facility.id}`}>시설 상태로 돌아가기<ArrowRight size={18} /></Link></div>;
   return <div className="report-layout"><div className="report-intro"><div className="eyebrow">NEW REPORT</div><h1>어떤 불편이<br />있으신가요?</h1><p>증상을 알려 주시면 같은 고장인지<br />확인한 후 접수해 드려요.</p><div className="report-facility"><div className={`facility-icon kind-${facility.kind}`}><FacilityIcon kind={facility.kind} /></div><div><strong>{facility.name}</strong><span>{facility.location}</span></div></div><div className="aside-note"><Sparkles size={22} /><h3>같은 요청는 하나로 모여요</h3><p>이미 접수된 고장과 같은 문제라면 기존 요청에 합쳐집니다.</p></div></div><form onSubmit={submit} className="report-form panel"><fieldset disabled={busy}><label className="field-label">어떤 증상인가요?<span>필수</span></label><div className="symptom-options">{symptoms.map(s => <button key={s} type="button" className={symptom === s ? 'selected' : ''} onClick={() => { setSymptom(s); edited(); }}>{symptomLabels[s]}{symptom === s && <Check size={15} />}</button>)}</div><label className="field-label" htmlFor="description">조금 더 자세히 알려 주세요<span>필수</span></label><textarea id="description" value={description} onChange={e => { setDescription(e.target.value); edited(); }} maxLength={500} rows={5} placeholder="예: 출력 버튼을 눌러도 종이가 안 나와요" required /><div className="input-help"><span>문제가 발생하는 상황을 적어 주세요.</span><span>{description.length} / 500</span></div>
-      {photos && <><label className="field-label" htmlFor="photo">사진 첨부<span className="optional">선택</span></label><input ref={fileInput} id="photo" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={e => { const f = e.target.files?.[0]; edited(); if (!f) return; if (f.size > 5 * 1024 * 1024) { setError('사진은 5MB까지 첨부할 수 있어요.'); e.target.value = ''; return; } setPhoto(f); }} />{preview ? <div className="photo-preview"><img src={preview} alt="첨부할 고장 사진" /><button type="button" className="photo-remove" aria-label="사진 제거" onClick={() => { setPhoto(null); if (fileInput.current) fileInput.current.value = ''; edited(); }}><X size={18} /></button></div> : <button className="upload-zone" type="button" onClick={() => fileInput.current?.click()}><Camera size={26} /><strong>사진을 추가해 주세요</strong><span>JPEG, PNG, WebP · 최대 5MB · 1장</span></button>}</>}
+      {photos && <><label className="field-label" htmlFor="photo">사진 첨부<span className="optional">선택</span></label><input ref={fileInput} id="photo" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={e => { const f = e.target.files?.[0]; edited(); if (!f) return; if (f.size > 1024 * 1024) { setError('사진은 1MB까지 첨부할 수 있어요.'); e.target.value = ''; return; } setPhoto(f); }} />{preview ? <div className="photo-preview"><img src={preview} alt="첨부할 고장 사진" /><button type="button" className="photo-remove" aria-label="사진 제거" onClick={() => { setPhoto(null); if (fileInput.current) fileInput.current.value = ''; edited(); }}><X size={18} /></button></div> : <button className="upload-zone" type="button" onClick={() => fileInput.current?.click()}><Camera size={26} /><strong>사진을 추가해 주세요</strong><span>JPEG, PNG, WebP · 최대 1MB · 1장</span></button>}</>}
       {error && <Notice>{error}</Notice>}<div className="form-bottom"><p><ShieldCheck size={15} />입력한 요청는 담당자가 확인합니다.</p><button className="button primary full" disabled={busy || description.trim().length < 5} type="submit">{busy ? <><LoaderCircle size={18} className="spin" />기존 요청를 확인하고 있어요…</> : <>요청 등록하기<ArrowRight size={18} /></>}</button></div></fieldset></form></div>;
 }
 
@@ -181,5 +188,5 @@ function PredictionSection({ generation }: { generation: number }) {
 function QRModal({ facility, close }: { facility: FacilityList['facilities'][number]; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null); const [src, setSrc] = useState(''); const [error, setError] = useState('');
   useEffect(() => { dialog.current?.showModal(); import('qrcode').then(qr => qr.toDataURL(facility.url, { width: 300, margin: 2, color: { dark: '#172019', light: '#ffffff' } })).then(setSrc).catch(() => setError('QR을 생성하지 못했어요. 아래 시설 링크로 이동해 주세요.')); }, [facility.url]);
-  return <dialog ref={dialog} className="qr-dialog" onCancel={close} onClick={e => { if (e.target === dialog.current) close(); }}><button className="modal-close" onClick={close} aria-label="닫기"><X size={22} /></button><span className="eyebrow">SCAN & CHECK</span><h2>{facility.name}</h2><p>{facility.location}</p>{src ? <img className="qr-image" src={src} alt={`${facility.name} 시설 페이지 QR`} /> : error ? <Notice>{error}</Notice> : <Loading />}<p>QR로 시설 상태와 처리 현황을 확인하세요.</p><Link className="button primary full" href={`/facilities/${facility.id}`} onClick={close}>시설 페이지 열기<ArrowUpRight size={17} /></Link><small>다른 기기로 스캔하려면 APP_BASE_URL을<br />접속 가능한 맥북의 네트워크 주소로 설정하세요.</small></dialog>;
+  return <dialog ref={dialog} className="qr-dialog" onCancel={close} onClick={e => { if (e.target === dialog.current) close(); }}><button className="modal-close" onClick={close} aria-label="닫기"><X size={22} /></button><span className="eyebrow">SCAN & CHECK</span><h2>{facility.name}</h2><p>{facility.location}</p>{src ? <img className="qr-image" src={src} alt={`${facility.name} 시설 페이지 QR`} /> : error ? <Notice>{error}</Notice> : <Loading />}<p>QR로 시설 상태와 처리 현황을 확인하세요.</p><Link className="button primary full" href={`/facilities/${facility.id}`} onClick={close}>시설 페이지 열기<ArrowUpRight size={17} /></Link><small>QR을 스캔하면 이 사이트의 시설 페이지로 이동합니다.</small></dialog>;
 }

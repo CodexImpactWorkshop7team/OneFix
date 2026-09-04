@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { z } from 'zod';
 import { symptoms, type DedupMethod, type ReportResult } from '../../types/domain.ts';
 import { run, one, facility, issues, transaction, iso } from './db.ts';
@@ -19,18 +17,26 @@ export async function serialize<T>(id: string, work: () => Promise<T>): Promise<
   const before = entry.tail; let release!: () => void;
   entry.tail = new Promise<void>(r => { release = r; }); entry.waiting++; locks.set(id, entry);
   await before;
-  try { return await work(); }
-  finally { entry.waiting--; release(); if (!entry.waiting) locks.delete(id); }
+  const token = randomUUID(); let acquired = false;
+  try {
+    const claimed = await run(`INSERT INTO request_locks VALUES (?,?,?) ON CONFLICT(scope) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at WHERE request_locks.expires_at<?`, id, token, Date.now() + 90000, Date.now());
+    acquired = claimed.rowsAffected === 1;
+    if (!acquired) throw new ApiError(503, 'SERVER_BUSY', '같은 요청을 처리 중이에요. 잠시 후 다시 시도해 주세요.');
+    return await work();
+  } finally {
+    try { if (acquired) await run('DELETE FROM request_locks WHERE scope=? AND token=?', id, token); }
+    finally { entry.waiting--; release(); if (!entry.waiting) locks.delete(id); }
+  }
 }
 type StoredReport = { id: string; issue_id: string; merged: number; dedup_method: DedupMethod; payload_hash: string };
-function result(row: StoredReport): ReportResult {
-  return { reportId: row.id, issueId: row.issue_id, merged: Boolean(row.merged), affectedCount: issues('i.id=?', [row.issue_id])[0].affectedCount,
+async function result(row: StoredReport): Promise<ReportResult> {
+  return { reportId: row.id, issueId: row.issue_id, merged: Boolean(row.merged), affectedCount: (await issues('i.id=?', [row.issue_id]))[0].affectedCount,
     dedupMethod: row.dedup_method, noticeCode: row.dedup_method === 'mock' ? 'MOCK_MODE' : row.dedup_method === 'fallback' ? 'DEDUP_UNAVAILABLE' : null };
 }
 export async function submitReport(req: Request) {
   const type = req.headers.get('content-type') || '';
   if (!type.startsWith('multipart/form-data')) throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', '요청 폼 형식이 올바르지 않습니다.');
-  const bytes = await bodyBytes(req, 6 * 1024 * 1024);
+  const bytes = await bodyBytes(req, 1200 * 1024);
   let form: FormData;
   try { form = await new Response(new Uint8Array(bytes), { headers: { 'content-type': type } }).formData(); }
   catch { throw new ApiError(400, 'VALIDATION_ERROR', '요청 폼을 읽을 수 없습니다.'); }
@@ -40,12 +46,12 @@ export async function submitReport(req: Request) {
     if (key !== 'photo') fields[key] = value;
   }
   const input = parse(reportSchema, fields); checkIdentity(req, input.clientId);
-  if (!facility(input.facilityId)) throw new ApiError(404, 'FACILITY_NOT_FOUND', '시설을 찾을 수 없습니다.');
+  if (!(await facility(input.facilityId))) throw new ApiError(404, 'FACILITY_NOT_FOUND', '시설을 찾을 수 없습니다.');
   const photo = form.get('photo'); let image: { data: Buffer; mime: string; extension: string } | null = null;
   if (photo !== null) {
     if (process.env.FEATURE_PHOTOS === 'false') throw new ApiError(400, 'PHOTO_DISABLED', '사진 첨부가 비활성화되어 있습니다.');
     if (typeof photo === 'string' || photo.size === 0) throw new ApiError(400, 'VALIDATION_ERROR', '사진 파일을 선택해 주세요.', 'photo');
-    if (photo.size > 5 * 1024 * 1024) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '사진은 5MB까지 첨부할 수 있어요.', 'photo');
+    if (photo.size > 1024 * 1024) throw new ApiError(413, 'PAYLOAD_TOO_LARGE', '사진은 1MB까지 첨부할 수 있어요.', 'photo');
     const data = Buffer.from(await photo.arrayBuffer());
     const format = data.subarray(0, 3).equals(Buffer.from([255, 216, 255])) ? ['image/jpeg', 'jpg']
       : data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? ['image/png', 'png']
@@ -55,36 +61,33 @@ export async function submitReport(req: Request) {
   }
   const hash = createHash('sha256').update(JSON.stringify([input.facilityId, input.clientId, input.symptom, input.description, image ? createHash('sha256').update(image.data).digest('hex') : null])).digest('hex');
   return serialize(input.facilityId, async () => {
-    const previous = one<StoredReport>('SELECT * FROM reports WHERE request_id=?', input.requestId);
+    const previous = (await one<StoredReport>('SELECT * FROM reports WHERE request_id=?', input.requestId));
     if (previous) {
       if (previous.payload_hash !== hash) throw new ApiError(409, 'REQUEST_ID_CONFLICT', '수정된 내용은 새로 접수해 주세요.');
-      return { status: 200, data: result(previous) };
+      return { status: 200, data: (await result(previous)) };
     }
-    const candidates = issues("i.facility_id=? AND i.status<>'resolved'", [input.facilityId]).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)).slice(0, 20);
+    const candidates = (await issues("i.facility_id=? AND i.status<>'resolved'", [input.facilityId])).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id)).slice(0, 20);
     const match = await findDuplicate(input, candidates);
-    let filePath: string | null = null;
     try {
-      const stored = transaction(() => {
+      const stored = (await transaction(async () => {
         let issueId = match.id; let method = match.method;
-        if (issueId && issues("i.id=? AND i.status<>'resolved'", [issueId]).length === 0) { issueId = null; method = 'fallback'; }
+        if (issueId && (await issues("i.id=? AND i.status<>'resolved'", [issueId])).length === 0) { issueId = null; method = 'fallback'; }
         const merged = Boolean(issueId); const now = iso(Date.now());
         issueId ||= randomUUID();
-        if (!merged) run('INSERT INTO issues (id,facility_id,symptom,description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)', issueId, input.facilityId, input.symptom, input.description, 'reported', now, now);
+        if (!merged) (await run('INSERT INTO issues (id,facility_id,symptom,description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)', issueId, input.facilityId, input.symptom, input.description, 'reported', now, now));
         const reportId = randomUUID();
-        run('INSERT INTO reports VALUES (?,?,?,?,?,?,?,?,?,?)', reportId, issueId, input.clientId, input.requestId, hash, input.symptom, input.description, now, method, Number(merged));
-        run('INSERT OR IGNORE INTO participations VALUES (?,?,?)', issueId, input.clientId, now);
+        (await run('INSERT INTO reports VALUES (?,?,?,?,?,?,?,?,?,?)', reportId, issueId, input.clientId, input.requestId, hash, input.symptom, input.description, now, method, Number(merged)));
+        (await run('INSERT OR IGNORE INTO participations VALUES (?,?,?)', issueId, input.clientId, now));
         if (image) {
           const photoId = randomUUID(); const key = `${photoId}.${image.extension}`;
-          const directory = resolve(process.env.UPLOAD_DIR || './data/uploads'); mkdirSync(directory, { recursive: true });
-          filePath = resolve(directory, key); writeFileSync(filePath, image.data);
-          run('INSERT INTO photos VALUES (?,?,?,?,?)', photoId, reportId, key, image.mime, image.data.length);
+          (await run('INSERT INTO photos VALUES (?,?,?,?,?)', photoId, reportId, key, image.mime, image.data.length));
+          await run('INSERT INTO photo_contents VALUES (?,?)', photoId, image.data);
         }
         return { id: reportId, issue_id: issueId, merged: Number(merged), dedup_method: method, payload_hash: hash };
-      });
-      return { status: 201, data: result(stored) };
+      }));
+      return { status: 201, data: (await result(stored)) };
     } catch (error) {
-      if (filePath) { try { unlinkSync(filePath); } catch {} }
-      if (one<StoredReport>('SELECT * FROM reports WHERE request_id=?', input.requestId)) throw new ApiError(409, 'REQUEST_ID_CONFLICT', '같은 요청 ID가 이미 사용되었습니다.');
+      if ((await one<StoredReport>('SELECT * FROM reports WHERE request_id=?', input.requestId))) throw new ApiError(409, 'REQUEST_ID_CONFLICT', '같은 요청 ID가 이미 사용되었습니다.');
       throw error;
     }
   });

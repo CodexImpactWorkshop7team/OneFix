@@ -27,7 +27,7 @@ export default function QuestionsBoard({ admin = false }: { admin?: boolean }) {
     catch (e) { setError(message(e)); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { void refresh(); setSelected(new URLSearchParams(window.location.search).get('id') || ''); }, [refresh]);
+  useEffect(() => { void refresh(); const params = new URLSearchParams(window.location.search); setSelected(params.get('id') || ''); if (!admin && params.get('new') === '1') setForm(true); }, [refresh]);
   const filtered = questions.filter(q => (department === 'all' || department === q.department) &&
     (status === 'all' || (status === 'answered' ? Boolean(q.answer) : !q.answer)) &&
     `${q.title} ${q.description} ${q.period} ${q.answer || ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
@@ -39,7 +39,7 @@ export default function QuestionsBoard({ admin = false }: { admin?: boolean }) {
   return <section className="questions-board">
     <div className="page-heading"><div><div className="eyebrow">ONE QUESTION, SHARED ANSWER</div><h1>{admin ? '같이 모으고, 각각 답해요.' : '같은 궁금증을, 하나로.'}</h1><p>{admin ? '공통 안내를 공유하고, 원문별 상황에 맞는 답변을 검토하세요.' : '학사부터 생활행정까지. 함께 묻고, 담당 부서의 답변을 함께 확인해요.'}</p></div><div className="q-actions"><button className="button secondary" onClick={() => void refresh()} disabled={loading} aria-label="요청 새로고침"><RefreshCw size={17} className={loading ? 'spin' : ''} /></button>{!admin && <button className="button primary" onClick={() => { setForm(!form); setResult(null); }}><Plus size={17} />요청 등록</button>}</div></div>
     <div className="q-summary"><div><strong>{questions.filter(q => !q.answer).length}</strong><span>공통 안내 대기</span></div><div><strong>{questions.filter(q => q.answer).length}</strong><span>공통 안내 등록</span></div><div className="q-summary-note"><MessageCircle size={23} /><span>같은 부서 · 같은 적용 시기<br /><b>원문별 답변으로 세부 상황까지 확인해요</b></span></div></div>
-    <div className="q-page-links"><Link className="text-link" href={admin ? '/questions' : '/admin/questions'}>{admin ? '행정 요청 게시판' : '담당자 답변 관리'}<ArrowRight size={15} /></Link>{admin && <Link className="text-link" href="/admin">시설 요청 관리<ArrowRight size={15} /></Link>}</div>
+    {admin && <div className="q-page-links"><Link className="text-link" href={admin ? '/questions' : '/admin/questions'}>{admin ? '행정 요청 게시판' : '담당자 답변 관리'}<ArrowRight size={15} /></Link>{admin && <Link className="text-link" href="/admin">시설 요청 관리<ArrowRight size={15} /></Link>}</div>}
     {form && !admin && <QuestionForm onClose={() => setForm(false)} onResult={async r => { setResult(r); setForm(false); select(r.question.id); await refresh(); }} />}
     {result && <div className="q-result" role="status"><Check size={20} /><div><strong>{result.merged ? '같은 요청에 모였어요.' : '새 요청이 등록됐어요.'}</strong><p>{result.question.answer ? '이미 등록된 공통 안내을 아래에서 확인하세요.' : '답변이 등록되면 이 페이지에서 함께 확인할 수 있어요.'}{result.dedupMethod === 'fallback' && ' AI 중복 확인이 지연되어 별도 요청으로 접수했어요.'}{result.dedupMethod === 'mock' && ' 데모 모드에서는 제목과 내용이 같은 요청만 합칩니다.'}</p></div></div>}
     {error && <div className="notice" role="alert">{error}</div>}

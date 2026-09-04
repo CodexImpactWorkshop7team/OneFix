@@ -1,6 +1,6 @@
 # API 계약 v1
 
-기본 경로 `/api`. 동일 출처의 로컬 데모 API이며 인증은 없다. JSON은 UTF-8, 필드는 camelCase, null은 명시적으로 반환한다. 아래 타입 표기는 응답 구조를 나타내며 실제 구현 파일은 아니다.
+기본 경로 `/api`. 동일 출처 API다. `/api/admin/*`와 모든 PATCH에는 관리자 세션이 필요하며 비로그인 요청은 401이다. JSON은 UTF-8, 필드는 camelCase, null은 명시적으로 반환한다. 아래 타입 표기는 응답 구조를 나타내며 실제 구현 파일은 아니다.
 
 ## 공통 타입
 
@@ -140,7 +140,7 @@ reports는 createdAt 오름차순 → id 오름차순. 사진 URL은 `/api/uploa
 
 `GET /api/uploads/:id` → 200 바이너리. 서버는 photo ID로 저장 키를 조회한다. 사용자 입력을 파일 경로로 직접 연결하지 않는다. 올바른 Content-Type, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`를 반환한다.
 
-메타데이터·파일 없음은 404 `PHOTO_NOT_FOUND`. 기능 비활성은 404 `FEATURE_DISABLED`. 인증 없는 로컬 데모 API라는 범위는 관리자 상세와 같다.
+메타데이터·파일 없음은 404 `PHOTO_NOT_FOUND`. 기능 비활성은 404 `FEATURE_DISABLED`. 사진 조회는 공개이며 관리자 상세는 세션 인증이 필요하다.
 
 ## 예측 조회 · P1
 
@@ -195,3 +195,12 @@ reports는 createdAt 오름차순 → id 오름차순. 사진 URL은 `/api/uploa
 ## 행정 요청 API 추가
 
 시설 요청 API는 그대로 유지합니다. 행정 요청의 목록·접수·참여·공통 답변 API는 [행정 요청 스펙](questions.md#api)을 참고하세요.
+
+## 관리자 인증
+
+- `GET /auth/session`: `{authenticated, configured}`
+- `POST /auth/login`: `{username, password}` → HttpOnly 세션 쿠키. 자격 오류 401, 과다 시도 429.
+- `POST /auth/logout`: 현재 DB 세션 삭제와 쿠키 만료.
+- `GET /overview`: 공개 시설 현황. 관리자 화면과 별도로 읽기 전용 제공.
+
+새 첨부 사진 제한은 1MB이며 DB에 저장한다. 초기 표의 용량과 로컬 저장 설명보다 이 규약이 우선한다. 상세 운영 설정은 [배포 가이드](deployment.md)를 따른다.
