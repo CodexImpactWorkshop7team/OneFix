@@ -191,3 +191,7 @@ reports는 createdAt 오름차순 → id 오름차순. 사진 URL은 `/api/uploa
 | 500 | STORAGE_ERROR / INTERNAL_ERROR | 입력 유지·재시도, 서버 상세 오류는 숨김 |
 
 서버 쓰기 트랜잭션이 실패하면 부분 접수를 남기지 않는다. 클라이언트는 네트워크 타임아웃만으로 접수되지 않았다고 단정하지 않고 같은 requestId로 확인·재시도한다.
+
+## 행정 요청 API 추가
+
+시설 요청 API는 그대로 유지합니다. 행정 요청의 목록·접수·참여·공통 답변 API는 [행정 요청 스펙](questions.md#api)을 참고하세요.

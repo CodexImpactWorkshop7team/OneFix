@@ -5,6 +5,7 @@ import { all, one, run, transaction, issues, facilities, facility, sortOpen, sor
 import { ApiError, parse, uuid, clientHeader, checkIdentity, jsonBody } from '@/lib/server/validation';
 import { submitReport } from '@/lib/server/reports';
 import { dedupMode } from '@/lib/server/deduplication';
+import { handleQuestions } from '@/lib/server/questions';
 import { predictions } from '@/lib/server/predictions';
 import { statuses, type Report, type Symptom, type DedupMethod } from '@/types/domain';
 
@@ -12,7 +13,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 type Context = { params: Promise<{ path: string[] }> };
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
-const notFound = () => { throw new ApiError(404, 'ISSUE_NOT_FOUND', '고장 신고를 찾을 수 없습니다.'); };
+const notFound = () => { throw new ApiError(404, 'ISSUE_NOT_FOUND', '고장 요청을 찾을 수 없습니다.'); };
 
 async function handle(req: Request, context: Context) {
   try {
@@ -22,6 +23,8 @@ async function handle(req: Request, context: Context) {
       const origin = req.headers.get('origin');
       if (origin && new URL(origin).host !== new URL(req.url).host) throw new ApiError(403, 'FORBIDDEN', '이 사이트에서 다시 접수해 주세요.');
     }
+    const questionResponse = await handleQuestions(req, segments, clientId);
+    if (questionResponse) return questionResponse;
     if (method === 'GET' && path === 'facilities') {
       const base = (process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
       return json({ facilities: facilities().map(f => ({ ...f, openIssueCount: issues("i.facility_id=? AND i.status<>'resolved'", [f.id]).length, url: `${base}/facilities/${f.id}` })),

@@ -13,9 +13,9 @@ const reportSchema = z.object({
 }).strict();
 const globalLocks = globalThis as typeof globalThis & { onefixLocks?: Map<string, { tail: Promise<void>; waiting: number }> };
 const locks = globalLocks.onefixLocks ||= new Map();
-async function serialize<T>(id: string, work: () => Promise<T>): Promise<T> {
+export async function serialize<T>(id: string, work: () => Promise<T>): Promise<T> {
   const entry = locks.get(id) || { tail: Promise.resolve(), waiting: 0 };
-  if (entry.waiting >= 6) throw new ApiError(503, 'SERVER_BUSY', '신고가 몰리고 있어요. 잠시 후 다시 시도해 주세요.');
+  if (entry.waiting >= 6) throw new ApiError(503, 'SERVER_BUSY', '요청이 몰리고 있어요. 잠시 후 다시 시도해 주세요.');
   const before = entry.tail; let release!: () => void;
   entry.tail = new Promise<void>(r => { release = r; }); entry.waiting++; locks.set(id, entry);
   await before;
@@ -29,11 +29,11 @@ function result(row: StoredReport): ReportResult {
 }
 export async function submitReport(req: Request) {
   const type = req.headers.get('content-type') || '';
-  if (!type.startsWith('multipart/form-data')) throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', '신고 폼 형식이 올바르지 않습니다.');
+  if (!type.startsWith('multipart/form-data')) throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', '요청 폼 형식이 올바르지 않습니다.');
   const bytes = await bodyBytes(req, 6 * 1024 * 1024);
   let form: FormData;
   try { form = await new Response(new Uint8Array(bytes), { headers: { 'content-type': type } }).formData(); }
-  catch { throw new ApiError(400, 'VALIDATION_ERROR', '신고 폼을 읽을 수 없습니다.'); }
+  catch { throw new ApiError(400, 'VALIDATION_ERROR', '요청 폼을 읽을 수 없습니다.'); }
   const fields: Record<string, unknown> = {};
   for (const [key, value] of form.entries()) {
     if (form.getAll(key).length > 1) throw new ApiError(400, 'VALIDATION_ERROR', '중복 입력 항목이 있습니다.', key);

@@ -40,3 +40,16 @@ export type PredictionItem = {
   };
 };
 export type Predictions = { asOf: string; asOfDate: string; generatedAt: string; timezone: 'Asia/Seoul'; methodVersion: 'history-v1'; datasetKind: 'live' | 'synthetic'; items: PredictionItem[] };
+
+export const questionDepartments = ['academic', 'scholarship', 'office'] as const;
+export type QuestionDepartment = typeof questionDepartments[number];
+export const departmentLabels: Record<QuestionDepartment, string> = {
+  academic: '학사 · 수업', scholarship: '장학 · 등록', office: '사무국 · 생활행정',
+};
+export type Question = {
+  id: string; department: QuestionDepartment; period: string; title: string; description: string;
+  answer: string | null; answeredAt: string | null; updatedAt: string; createdAt: string;
+  interestedCount: number; submissionCount: number; hasParticipated: boolean;
+};
+export type QuestionSubmission = { id: string; title: string; description: string; createdAt: string; dedupMethod: DedupMethod };
+export type QuestionResult = { question: Question; merged: boolean; dedupMethod: DedupMethod };
