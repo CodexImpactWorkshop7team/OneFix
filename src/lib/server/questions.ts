@@ -67,14 +67,26 @@ async function duplicate(input: Input, candidates: Question[]): Promise<{ id: st
   } catch { return { id: null, method: 'fallback' }; }
 }
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+function publicQuestion(q: Question) {
+  const { answeredSubmissionCount, clarificationCount, ...visible } = q;
+  return visible;
+}
+function publicSubmission(s: QuestionSubmission) {
+  const { dedupMethod, answerRevision, ...visible } = s;
+  return visible;
+}
 export async function handleQuestions(req: Request, segments: string[], clientId: string): Promise<Response | null> {
   const admin = segments[0] === 'admin';
   const parts = admin ? segments.slice(1) : segments;
   if (parts[0] !== 'questions') return null;
-  if (req.method === 'GET' && parts.length === 1) return json({ questions: (await list(clientId)), dedupMode: dedupMode() });
+  if (req.method === 'GET' && parts.length === 1) {
+    const questions = await list(clientId);
+    return json(admin ? { questions, dedupMode: dedupMode() } : { questions: questions.map(publicQuestion) });
+  }
   if (req.method === 'GET' && parts.length === 2) {
     const question = (await get(parts[1], clientId));
-    return json({ question, submissions: (await submissions(question.id)) });
+    const originals = await submissions(question.id);
+    return json(admin ? { question, submissions: originals } : { question: publicQuestion(question), submissions: originals.map(publicSubmission) });
   }
   if (!admin && req.method === 'POST' && parts.length === 1) {
     const input = parse(inputSchema, await jsonBody(req)); checkIdentity(req, input.clientId);
@@ -83,7 +95,7 @@ export async function handleQuestions(req: Request, segments: string[], clientId
       const previous = await one<{ question_id: string; payload_hash: string; merged: number; dedup_method: DedupMethod }>('SELECT * FROM question_submissions WHERE request_id=?', input.requestId);
       if (previous) {
         if (previous.payload_hash !== hash) throw new ApiError(409, 'REQUEST_ID_CONFLICT', '요청 내용이 바뀌었어요. 다시 접수해 주세요.');
-        return json({ question: (await get(previous.question_id, input.clientId)), merged: Boolean(previous.merged), dedupMethod: previous.dedup_method } satisfies QuestionResult);
+        return json({ question: publicQuestion(await get(previous.question_id, input.clientId)), merged: Boolean(previous.merged) } satisfies QuestionResult);
       }
       const candidates = (await list(input.clientId)).filter(q => q.department === input.department && q.period === input.period)
         .sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30);
@@ -95,7 +107,7 @@ export async function handleQuestions(req: Request, segments: string[], clientId
         (await run('INSERT OR IGNORE INTO question_participations VALUES (?,?,?)', id, input.clientId, now));
         return (await get(id, input.clientId));
       }));
-      return json({ question, merged: Boolean(match.id), dedupMethod: match.method } satisfies QuestionResult, 201);
+      return json({ question: publicQuestion(question), merged: Boolean(match.id) } satisfies QuestionResult, 201);
     });
   }
   if (!admin && req.method === 'POST' && parts.length === 3 && parts[2] === 'participations') {
@@ -103,7 +115,7 @@ export async function handleQuestions(req: Request, segments: string[], clientId
     return json((await transaction(async () => {
       (await get(parts[1], input.clientId));
       (await run('INSERT OR IGNORE INTO question_participations VALUES (?,?,?)', parts[1], input.clientId, iso(Date.now())));
-      return { question: (await get(parts[1], input.clientId)) };
+      return { question: publicQuestion(await get(parts[1], input.clientId)) };
     })));
   }
   if (admin && req.method === 'POST' && parts.length === 5 && parts[2] === 'submissions' && parts[4] === 'suggestion') {
@@ -122,7 +134,7 @@ export async function handleQuestions(req: Request, segments: string[], clientId
       if (item.answerRevision !== input.revision || question.updatedAt !== input.sourceUpdatedAt) throw new ApiError(409, 'ANSWER_CHANGED', '답변이 변경됐어요. 새로고침 후 최신 내용을 확인해 주세요.');
       (await run(`INSERT INTO question_submission_answers (submission_id,answer,status,revision,updated_at) VALUES (?,?,?,?,?)
         ON CONFLICT(submission_id) DO UPDATE SET answer=excluded.answer,status=excluded.status,revision=excluded.revision,updated_at=excluded.updated_at`,
-        item.id, input.answer, input.status, item.answerRevision + 1, iso(Date.now())));
+        item.id, input.answer, input.status, (item.answerRevision ?? 0) + 1, iso(Date.now())));
       return { submission: (await submission(question.id, item.id)) };
     })));
   }

@@ -27,14 +27,14 @@ async function handle(req: Request, context: Context) {
     }
     const authResponse = await handleAuth(req, path);
     if (authResponse) return authResponse;
-    if (segments[0] === 'admin' || method === 'PATCH') await requireAdmin(req);
+    if (segments[0] === 'admin' || segments[0] === 'uploads' || method === 'PATCH') await requireAdmin(req);
     const questionResponse = await handleQuestions(req, segments, clientId);
     if (questionResponse) return questionResponse;
-    if (method === 'GET' && path === 'facilities') {
+    if (method === 'GET' && (path === 'facilities' || path === 'admin/facilities')) {
       const base = (process.env.APP_BASE_URL || new URL(req.url).origin).replace(/\/$/, '');
       const catalog = (await facilities()), current = (await issues("i.status<>'resolved'"));
       return json({ facilities: catalog.map(f => ({ ...f, openIssueCount: current.filter(i => i.facilityId === f.id).length, url: `${base}/facilities/${f.id}` })),
-        meta: { dedupMode: dedupMode(), datasetKind: (await datasetKind()), features: { photos: process.env.FEATURE_PHOTOS !== 'false', predictions: process.env.FEATURE_PREDICTIONS !== 'false' } } });
+        meta: { ...(path === 'admin/facilities' ? { dedupMode: dedupMode() } : {}), datasetKind: (await datasetKind()), features: { photos: process.env.FEATURE_PHOTOS !== 'false', ...(path === 'admin/facilities' ? { predictions: process.env.FEATURE_PREDICTIONS !== 'false' } : {}) } } });
     }
     if (method === 'GET' && segments[0] === 'facilities' && segments.length === 2) {
       const item = (await facility(segments[1]));
@@ -42,7 +42,11 @@ async function handle(req: Request, context: Context) {
       const list = (await issues('i.facility_id=?', [item.id], clientId));
       return json({ facility: item, issues: list.filter(i => i.status !== 'resolved').sort(sortOpen), recentlyResolvedIssues: list.filter(i => i.status === 'resolved').sort(sortResolved).slice(0, 3) });
     }
-    if (method === 'POST' && path === 'reports') { const reply = await submitReport(req); return json(reply.data, reply.status); }
+    if (method === 'POST' && path === 'reports') {
+      const reply = await submitReport(req);
+      const { reportId, issueId, merged, affectedCount } = reply.data;
+      return json({ reportId, issueId, merged, affectedCount }, reply.status);
+    }
     if (method === 'POST' && segments[0] === 'issues' && segments[2] === 'participations' && segments.length === 3) {
       const input = parse(z.object({ clientId: uuid }).strict(), await jsonBody(req)); checkIdentity(req, input.clientId);
       return json((await transaction(async () => {

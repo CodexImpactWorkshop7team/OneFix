@@ -21,6 +21,7 @@ function Notice({ children }: { children: React.ReactNode }) { return <div class
 function Loading() { return <div className="loading"><LoaderCircle size={24} className="spin" /><span>시설 상태를 불러오고 있어요</span></div>; }
 
 export default function OneFixApp({ view, facilityId }: { view: View; facilityId?: string }) {
+  const adminView = view === 'admin' || view === 'question-admin';
   const [authenticated, setAuthenticated] = useState(false);
   const [catalog, setCatalog] = useState<FacilityList | null>(null);
   const [admin, setAdmin] = useState<AdminList | null>(null);
@@ -35,14 +36,14 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
     setBusy(true); setError('');
     try {
       const [facilities, nextAdmin, nextDetail] = await Promise.all([
-        api<FacilityList>('facilities'),
+        api<FacilityList>(adminView ? 'admin/facilities' : 'facilities'),
         view === 'home' || view === 'admin' ? api<AdminList>(view === 'home' ? 'overview' : `admin/issues?state=${tab}`) : Promise.resolve(null),
         facilityId ? api<FacilityDetail>(`facilities/${facilityId}`) : Promise.resolve(null),
       ]);
       setCatalog(facilities); setAdmin(nextAdmin); setDetail(nextDetail); setGeneration(n => n + 1);
     } catch (error) { setError(errorMessage(error)); }
     finally { setBusy(false); }
-  }, [view, facilityId, tab]);
+  }, [view, facilityId, tab, adminView]);
   useEffect(() => { void refresh(); api<{ authenticated: boolean }>('auth/session').then(r => setAuthenticated(r.authenticated)).catch(() => setAuthenticated(false)); }, [refresh]);
   async function logout() {
     try { await api('auth/logout', { method: 'POST' }); window.location.assign('/'); }
@@ -71,8 +72,8 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
       <header className="topbar"><div className="breadcrumb"><span>워크스페이스</span><ChevronRight size={14} /><strong>{title[view]}</strong></div><div className="topbar-right">{authenticated ? <><Link className="text-link" href="/admin">관리자 대시보드</Link><button className="button secondary" onClick={() => void logout()}>로그아웃</button></> : <Link className="button secondary" href="/login">관리자 로그인</Link>}</div></header>
       <main className="main-content">
         {storageWarning && <Notice>이 브라우저에서 사용자 정보를 저장할 수 없어 새로고침 후 중복 참여 방지가 제한될 수 있어요.</Notice>}
-        {catalog?.meta.datasetKind === 'synthetic' && <div className="demo-strip"><Sparkles size={14} /><span>워크샵 예시 데이터가 포함되어 있습니다. 참여 인원·답변·예측은 시연용입니다.</span></div>}
-        {catalog?.meta.dedupMode === 'mock' && <div className="demo-strip"><Sparkles size={14} /><span>데모 병합 모드 <span className="demo-divider">·</span> 정해진 예시 문장으로 중복 요청을 확인합니다.</span>{catalog.meta.datasetKind === 'synthetic' && <span className="demo-label">샘플 데이터</span>}</div>}
+        {catalog?.meta.datasetKind === 'synthetic' && <div className="demo-strip"><Sparkles size={14} /><span>시연용 예시가 포함되어 있습니다. 실제 일정과 규정은 담당 부서의 공지를 확인해 주세요.</span></div>}
+        {adminView && catalog?.meta.dedupMode === 'mock' && <div className="demo-strip"><Sparkles size={14} /><span>데모 병합 모드 <span className="demo-divider">·</span> 정해진 예시 문장으로 중복 요청을 확인합니다.</span>{catalog.meta.datasetKind === 'synthetic' && <span className="demo-label">샘플 데이터</span>}</div>}
         {error && <Notice>{error} <button className="text-button" onClick={() => void refresh()}>다시 시도</button></Notice>}
         {!catalog && !error ? <Loading /> : null}
         {catalog && view === 'request' && <><div className="page-heading"><div><div className="eyebrow">NEW REQUEST</div><h1>어떤 도움이 필요하세요?</h1><p>로그인 없이 요청을 남기고, 진행 상황과 답변을 확인할 수 있어요.</p></div></div><div className="request-options"><section className="panel request-option"><Wrench size={28} /><h2>시설 요청</h2><p>고장이나 이용 중 불편한 시설을 선택해 주세요.</p>{catalog.facilities.map(f => <Link key={f.id} className="request-facility" href={`/facilities/${f.id}/report`}><span><strong>{f.name}</strong><small>{f.location}</small></span><ArrowRight size={17} /></Link>)}</section><section className="panel request-option"><Users size={28} /><h2>행정 요청</h2><p>학사, 장학금, 신청 절차 등 궁금한 내용을 담당 부서에 물어보세요.</p><Link className="button primary full" href="/questions?new=1">행정 요청 작성<ArrowRight size={17} /></Link><Link className="text-link" href="/questions">이미 올라온 요청과 답변 보기<ArrowRight size={14} /></Link></section></div></>}
@@ -88,7 +89,7 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
               <Link href={`/facilities/${f.id}`} className="facility-title">{f.name}<ArrowUpRight size={21} /></Link><div className="location"><MapPin size={14} />{f.location}</div>
               <div className="facility-current"><span className="small-label">현재 요청</span><strong>{lead ? symptomLabels[lead.symptom] : '현재 접수된 고장이 없습니다'}</strong><p>{lead?.description || '새로운 문제가 있다면 알려 주세요.'}</p></div>
               <div className="facility-impact"><span><Users size={17} />{lead ? <><strong>{lead.affectedCount}명</strong>이 같은 문제를 겪고 있어요</> : '접수된 불편이 없어요'}</span></div>
-              <div className="card-actions"><Link className="button card-main" href={`/facilities/${f.id}`}>상태 확인하기<ArrowRight size={17} /></Link><button className="button icon-button" aria-label={`${f.name} QR 보기`} onClick={() => setQr(f)}><QrCode size={21} /></button></div>
+              <div className="card-actions"><Link className="button card-main" href={`/facilities/${f.id}`}>상태 확인하기<ArrowRight size={17} /></Link>{authenticated && <button className="button icon-button" aria-label={`${f.name} QR 보기`} onClick={() => setQr(f)}><QrCode size={21} /></button>}</div>
             </article>;
           })}</div>
           <div className="bottom-banner"><div className="banner-icon"><CheckCheck size={28} /></div><div><h3>이미 접수된 문제라면, 한 번의 클릭으로.</h3><p>‘나도 겪고 있어요’를 누르면 영향 인원이 늘어나 관리자에게 전달돼요.</p></div><ArrowUpRight size={24} /></div>
@@ -99,7 +100,7 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
         {catalog && (view === 'facility' || view === 'report') && detail && <>
           <Link className="back-link" href={view === 'report' ? `/facilities/${facilityId}` : '/'}><ArrowLeft size={16} />{view === 'report' ? '시설 상태로 돌아가기' : '전체 시설'}</Link>
           {view === 'facility' ? <>
-            <div className="facility-page-heading"><div className={`facility-icon large kind-${detail.facility.kind}`}><FacilityIcon kind={detail.facility.kind} size={32} /></div><div><div className="eyebrow">FACILITY STATUS</div><h1>{detail.facility.name}</h1><div className="location"><MapPin size={15} />{detail.facility.location}</div></div><div className="heading-actions"><button className="button secondary" onClick={() => void refresh()} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} />새로고침</button><button className="button secondary" onClick={() => setQr(catalog.facilities.find(f => f.id === facilityId)!)}><QrCode size={18} />QR</button></div></div>
+            <div className="facility-page-heading"><div className={`facility-icon large kind-${detail.facility.kind}`}><FacilityIcon kind={detail.facility.kind} size={32} /></div><div><div className="eyebrow">FACILITY STATUS</div><h1>{detail.facility.name}</h1><div className="location"><MapPin size={15} />{detail.facility.location}</div></div><div className="heading-actions"><button className="button secondary" onClick={() => void refresh()} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} />새로고침</button>{authenticated && <button className="button secondary" onClick={() => setQr(catalog.facilities.find(f => f.id === facilityId)!)}><QrCode size={18} />QR</button>}</div></div>
             <div className="detail-layout"><section><div className="section-heading tight"><h2>현재 접수된 고장 <span className="count-tag">{detail.issues.length}</span></h2></div>
               <div className="issue-stack">{detail.issues.map(issue => <IssueCard key={issue.id} issue={issue} onChange={refresh} />)}</div>
               {!detail.issues.length && <div className="panel empty-state"><div className="success-ring"><Check size={26} /></div><h3>현재 접수된 고장이 없습니다</h3><p>새로운 불편이 있다면 아래에서 알려 주세요.</p><Link className="button primary" href={`/facilities/${facilityId}/report`}><Plus size={18} />시설 요청하기</Link></div>}
@@ -117,7 +118,7 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
         <footer className="footer"><span><Wrench size={13} /> OneFix <span className="footer-dot">·</span> 같은 문제, 하나의 해결</span><span>함께 만드는 더 편리한 캠퍼스</span></footer>
       </main>
     </div>
-    {qr && <QRModal facility={qr} close={() => setQr(null)} />}
+    {authenticated && qr && <QRModal facility={qr} close={() => setQr(null)} />}
   </div>;
 }
 
@@ -152,10 +153,10 @@ function ReportForm({ facility, photos }: { facility: Facility; photos: boolean 
     catch (e) { setError(errorMessage(e)); if (e instanceof RequestError && e.code === 'REQUEST_ID_CONFLICT') requestId.current = ''; }
     finally { setBusy(false); }
   }
-  if (result) return <div className="success-page panel"><div className="success-ring large"><Check size={38} /></div><span className="eyebrow">REPORT RECEIVED</span><h1>{result.merged ? '같은 시설 요청에 합쳐졌어요.' : '시설 요청이 접수됐어요.'}</h1><p>{facility.name}의 불편을 알려 주셔서 감사합니다.<br />처리 상황은 시설 페이지에서 확인할 수 있어요.</p><div className="success-count"><Users size={24} /><strong>{result.affectedCount}명</strong>이 함께 겪고 있어요</div>{result.noticeCode === 'DEDUP_UNAVAILABLE' && <Notice>중복 확인이 지연되어 별도 요청으로 접수했어요.</Notice>}{result.noticeCode === 'MOCK_MODE' && <p className="muted small">데모 규칙으로 중복 여부를 확인했습니다.</p>}<Link className="button primary" href={`/facilities/${facility.id}`}>시설 상태로 돌아가기<ArrowRight size={18} /></Link></div>;
-  return <div className="report-layout"><div className="report-intro"><div className="eyebrow">NEW REPORT</div><h1>어떤 불편이<br />있으신가요?</h1><p>증상을 알려 주시면 같은 고장인지<br />확인한 후 접수해 드려요.</p><div className="report-facility"><div className={`facility-icon kind-${facility.kind}`}><FacilityIcon kind={facility.kind} /></div><div><strong>{facility.name}</strong><span>{facility.location}</span></div></div><div className="aside-note"><Sparkles size={22} /><h3>같은 요청는 하나로 모여요</h3><p>이미 접수된 고장과 같은 문제라면 기존 요청에 합쳐집니다.</p></div></div><form onSubmit={submit} className="report-form panel"><fieldset disabled={busy}><label className="field-label">어떤 증상인가요?<span>필수</span></label><div className="symptom-options">{symptoms.map(s => <button key={s} type="button" className={symptom === s ? 'selected' : ''} onClick={() => { setSymptom(s); edited(); }}>{symptomLabels[s]}{symptom === s && <Check size={15} />}</button>)}</div><label className="field-label" htmlFor="description">조금 더 자세히 알려 주세요<span>필수</span></label><textarea id="description" value={description} onChange={e => { setDescription(e.target.value); edited(); }} maxLength={500} rows={5} placeholder="예: 출력 버튼을 눌러도 종이가 안 나와요" required /><div className="input-help"><span>문제가 발생하는 상황을 적어 주세요.</span><span>{description.length} / 500</span></div>
+  if (result) return <div className="success-page panel"><div className="success-ring large"><Check size={38} /></div><span className="eyebrow">REPORT RECEIVED</span><h1>{result.merged ? '같은 시설 요청에 합쳐졌어요.' : '시설 요청이 접수됐어요.'}</h1><p>{facility.name}의 불편을 알려 주셔서 감사합니다.<br />처리 상황은 시설 페이지에서 확인할 수 있어요.</p><div className="success-count"><Users size={24} /><strong>{result.affectedCount}명</strong>이 함께 겪고 있어요</div><Link className="button primary" href={`/facilities/${facility.id}`}>시설 상태로 돌아가기<ArrowRight size={18} /></Link></div>;
+  return <div className="report-layout"><div className="report-intro"><div className="eyebrow">NEW REPORT</div><h1>어떤 불편이<br />있으신가요?</h1><p>증상을 알려 주시면 같은 고장인지<br />확인한 후 접수해 드려요.</p><div className="report-facility"><div className={`facility-icon kind-${facility.kind}`}><FacilityIcon kind={facility.kind} /></div><div><strong>{facility.name}</strong><span>{facility.location}</span></div></div><div className="aside-note"><Sparkles size={22} /><h3>같은 요청은 하나로 모여요</h3><p>이미 접수된 고장과 같은 문제라면 기존 요청에 합쳐집니다.</p></div></div><form onSubmit={submit} className="report-form panel"><fieldset disabled={busy}><label className="field-label">어떤 증상인가요?<span>필수</span></label><div className="symptom-options">{symptoms.map(s => <button key={s} type="button" className={symptom === s ? 'selected' : ''} onClick={() => { setSymptom(s); edited(); }}>{symptomLabels[s]}{symptom === s && <Check size={15} />}</button>)}</div><label className="field-label" htmlFor="description">조금 더 자세히 알려 주세요<span>필수</span></label><textarea id="description" value={description} onChange={e => { setDescription(e.target.value); edited(); }} maxLength={500} rows={5} placeholder="예: 출력 버튼을 눌러도 종이가 안 나와요" required /><div className="input-help"><span>문제가 발생하는 상황을 적어 주세요.</span><span>{description.length} / 500</span></div>
       {photos && <><label className="field-label" htmlFor="photo">사진 첨부<span className="optional">선택</span></label><input ref={fileInput} id="photo" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={e => { const f = e.target.files?.[0]; edited(); if (!f) return; if (f.size > 1024 * 1024) { setError('사진은 1MB까지 첨부할 수 있어요.'); e.target.value = ''; return; } setPhoto(f); }} />{preview ? <div className="photo-preview"><img src={preview} alt="첨부할 고장 사진" /><button type="button" className="photo-remove" aria-label="사진 제거" onClick={() => { setPhoto(null); if (fileInput.current) fileInput.current.value = ''; edited(); }}><X size={18} /></button></div> : <button className="upload-zone" type="button" onClick={() => fileInput.current?.click()}><Camera size={26} /><strong>사진을 추가해 주세요</strong><span>JPEG, PNG, WebP · 최대 1MB · 1장</span></button>}</>}
-      {error && <Notice>{error}</Notice>}<div className="form-bottom"><p><ShieldCheck size={15} />입력한 요청는 담당자가 확인합니다.</p><button className="button primary full" disabled={busy || description.trim().length < 5} type="submit">{busy ? <><LoaderCircle size={18} className="spin" />기존 요청를 확인하고 있어요…</> : <>요청 등록하기<ArrowRight size={18} /></>}</button></div></fieldset></form></div>;
+      {error && <Notice>{error}</Notice>}<div className="form-bottom"><p><ShieldCheck size={15} />입력한 요청은 담당자가 확인합니다.</p><button className="button primary full" disabled={busy || description.trim().length < 5} type="submit">{busy ? <><LoaderCircle size={18} className="spin" />기존 요청을 확인하고 있어요…</> : <>요청 등록하기<ArrowRight size={18} /></>}</button></div></fieldset></form></div>;
 }
 
 function AdminRow({ issue, rank, onChange }: { issue: AdminIssue; rank: number; onChange: () => Promise<void> }) {

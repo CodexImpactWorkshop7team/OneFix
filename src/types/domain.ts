@@ -22,11 +22,11 @@ export type Report = {
   dedupMethod: DedupMethod; merged: boolean;
   photo: { id: string; url: string; mimeType: string; byteSize: number } | null;
 };
-export type Meta = { dedupMode: 'mock' | 'openai'; datasetKind: 'live' | 'synthetic'; features: { photos: boolean; predictions: boolean } };
+export type Meta = { dedupMode?: 'mock' | 'openai'; datasetKind: 'live' | 'synthetic'; features: { photos: boolean; predictions?: boolean } };
 export type FacilityList = { facilities: (Facility & { openIssueCount: number; url: string })[]; meta: Meta };
 export type FacilityDetail = { facility: Facility; issues: Issue[]; recentlyResolvedIssues: Issue[] };
 export type AdminList = { issues: AdminIssue[]; counts: { open: number; inProgress: number; resolved: number } };
-export type ReportResult = { reportId: string; issueId: string; merged: boolean; affectedCount: number; dedupMethod: DedupMethod; noticeCode: 'MOCK_MODE' | 'DEDUP_UNAVAILABLE' | null };
+export type ReportResult = { reportId: string; issueId: string; merged: boolean; affectedCount: number; dedupMethod?: DedupMethod; noticeCode?: 'MOCK_MODE' | 'DEDUP_UNAVAILABLE' | null };
 export type PredictionItem = {
   facility: Facility; observedDays: number; openIssueCount: number;
   forecast: {
@@ -50,10 +50,10 @@ export type Question = {
   id: string; department: QuestionDepartment; period: string; title: string; description: string;
   answer: string | null; answeredAt: string | null; updatedAt: string; createdAt: string;
   interestedCount: number; submissionCount: number; hasParticipated: boolean;
-  answeredSubmissionCount: number; clarificationCount: number;
+  answeredSubmissionCount?: number; clarificationCount?: number;
 };
-export type QuestionSubmission = { id: string; title: string; description: string; createdAt: string; dedupMethod: DedupMethod; answer: string | null; answerStatus: 'answered' | 'needs_clarification' | null; answerRevision: number; answeredAt: string | null };
-export type QuestionResult = { question: Question; merged: boolean; dedupMethod: DedupMethod };
+export type QuestionSubmission = { id: string; title: string; description: string; createdAt: string; dedupMethod?: DedupMethod; answer: string | null; answerStatus: 'answered' | 'needs_clarification' | null; answerRevision?: number; answeredAt: string | null };
+export type QuestionResult = { question: Question; merged: boolean; dedupMethod?: DedupMethod };
 
 export type AnswerSuggestion = {
   answer: string; status: 'answered' | 'needs_clarification'; reason: string; missingInfo: string[];
