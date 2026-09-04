@@ -9,7 +9,8 @@
     "db:init": "node --experimental-strip-types scripts/seed.ts --init",
     "db:seed": "node --experimental-strip-types scripts/seed.ts",
     "db:seed:demo": "node --experimental-strip-types scripts/seed.ts --demo",
-    "admin:setup": "node scripts/setup-admin.mjs"
+    "admin:setup": "node scripts/setup-admin.mjs",
+    "db:demo:add": "node --experimental-strip-types scripts/add-demo.ts"
   },
   "engines": {
     "node": "22.x"

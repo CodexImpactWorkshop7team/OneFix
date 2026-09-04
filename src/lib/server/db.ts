@@ -1,4 +1,5 @@
 import { createClient, type Client, type InValue, type InStatement, type Transaction } from '@libsql/client';
+import { addDemoData } from './demo-data.ts';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -26,6 +27,7 @@ export async function db(seed: 'demo' | 'live' | 'none' = 'demo'): Promise<Clien
         .map(sql => sql.replace(/CREATE TABLE (?!IF NOT EXISTS)/g, 'CREATE TABLE IF NOT EXISTS ').replace(/CREATE INDEX (?!IF NOT EXISTS)/g, 'CREATE INDEX IF NOT EXISTS ')).join('\n');
       await connection.executeMultiple(schema);
       if (seed !== 'none') await seedData(connection, seed === 'demo' && !remote);
+      if (seed !== 'none' && process.env.SEED_DEMO_DATA === 'true') await addDemoData(connection);
       return connection;
     } catch (error) { connection.close(); throw error; }
   })().catch(error => { globalDb.onefixLibsql = undefined; throw error; });

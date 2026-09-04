@@ -71,6 +71,7 @@ export default function OneFixApp({ view, facilityId }: { view: View; facilityId
       <header className="topbar"><div className="breadcrumb"><span>워크스페이스</span><ChevronRight size={14} /><strong>{title[view]}</strong></div><div className="topbar-right">{authenticated ? <><Link className="text-link" href="/admin">관리자 대시보드</Link><button className="button secondary" onClick={() => void logout()}>로그아웃</button></> : <Link className="button secondary" href="/login">관리자 로그인</Link>}</div></header>
       <main className="main-content">
         {storageWarning && <Notice>이 브라우저에서 사용자 정보를 저장할 수 없어 새로고침 후 중복 참여 방지가 제한될 수 있어요.</Notice>}
+        {catalog?.meta.datasetKind === 'synthetic' && <div className="demo-strip"><Sparkles size={14} /><span>워크샵 예시 데이터가 포함되어 있습니다. 참여 인원·답변·예측은 시연용입니다.</span></div>}
         {catalog?.meta.dedupMode === 'mock' && <div className="demo-strip"><Sparkles size={14} /><span>데모 병합 모드 <span className="demo-divider">·</span> 정해진 예시 문장으로 중복 요청을 확인합니다.</span>{catalog.meta.datasetKind === 'synthetic' && <span className="demo-label">샘플 데이터</span>}</div>}
         {error && <Notice>{error} <button className="text-button" onClick={() => void refresh()}>다시 시도</button></Notice>}
         {!catalog && !error ? <Loading /> : null}
