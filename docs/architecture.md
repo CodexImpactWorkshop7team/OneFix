@@ -13,7 +13,6 @@
 | AI | OpenAI 공식 JS SDK, Responses API, 구조화 출력 | 제한된 ID/null 결과만 사용 |
 | 예측 | 서버의 순수 집계 함수 | 외부 호출·학습 없이 재현 가능한 결과 |
 | QR | URL에서 생성하는 QR 라이브러리 | 외부 QR 서비스 불필요 |
-| 테스트 | Vitest로 도메인 규칙·DB 통합 검증 | UI 스냅샷보다 병합·인원·예측 경계 검증 |
 
 한 맥북의 작업 폴더에서 실행 가능한 라이브러리 조합을 설치한 뒤 `package-lock.json`과 Node 버전 파일 `.nvmrc`에 고정한다. 패키지 관리자는 npm으로 통일하고 재설치 시 `npm ci`를 사용한다. 설치된 Next.js·SQLite 드라이버가 선택한 Node 버전을 지원하는지 최초 실행에서 확인한다.
 
@@ -38,7 +37,6 @@ src/
     uploads.ts                   # 검증·파일 저장·조회
     validation.ts                # 서버 입력 검증
 scripts/                         # DB 초기화·시드
-tests/                           # 규칙·DB 테스트
 data/                            # git 제외: DB, 업로드
 docs/                            # 현재 스펙
 ```
@@ -73,10 +71,9 @@ DB·파일·API 키를 다루는 코드는 서버 전용으로 제한한다. 사
 | `npm run db:seed:demo -- --reset` | 명시적 reset 옵션으로 로컬 DB·업로드 초기화, 합성 이력 생성 |
 | `npm run dev` | 한 맥북에서 사용할 개발·시연 서버 |
 | `npm run dev -- --hostname 0.0.0.0` | 선택: 같은 Wi-Fi의 별도 기기에서 QR 접속 검증 |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | 프로젝트의 ESLint CLI 실행 |
-| `npm test` | 도메인 규칙·DB·예측 테스트, 실제 AI 호출 제외 |
-| `npm run build` | 프로덕션 빌드 검증 |
+| `npm run build` | 프로덕션 실행이 필요할 때 빌드 |
+
+테스트 프레임워크·테스트 디렉터리·전체 검사 스크립트는 기본 구축 범위에 넣지 않는다. 타입 검사·lint·테스트는 구체적인 오류 확인이나 해당 변경의 동작 확인에 필요한 경우에만 선택적으로 실행한다. 문서 변경에는 앱 테스트·빌드를 실행하지 않는다.
 
 실행 순서: 환경 변수 설정 → DB 초기화·시드 → dev 실행 → 같은 맥북의 두 브라우저 프로필로 접속 확인. 별도 휴대폰이 있으면 같은 Wi-Fi에서 QR 접속도 확인한다. 데모 초기화는 개발 서버를 중지하고 수행한다.
 
