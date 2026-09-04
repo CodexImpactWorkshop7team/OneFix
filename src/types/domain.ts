@@ -50,6 +50,7 @@ export type Question = {
   id: string; department: QuestionDepartment; period: string; title: string; description: string;
   answer: string | null; answeredAt: string | null; updatedAt: string; createdAt: string;
   interestedCount: number; submissionCount: number; hasParticipated: boolean;
+  answeredSubmissionCount: number; clarificationCount: number;
 };
 export type QuestionSubmission = { id: string; title: string; description: string; createdAt: string; dedupMethod: DedupMethod; answer: string | null; answerStatus: 'answered' | 'needs_clarification' | null; answerRevision: number; answeredAt: string | null };
 export type QuestionResult = { question: Question; merged: boolean; dedupMethod: DedupMethod };

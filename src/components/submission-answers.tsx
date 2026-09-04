@@ -1,25 +1,29 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import { Check, ChevronDown, LoaderCircle, MessageCircle, Send, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, LoaderCircle, MessageCircle, Search, Send, Sparkles } from 'lucide-react';
 import { api } from '@/lib/client/api';
 import type { AnswerSuggestion, Question, QuestionSubmission } from '@/types/domain';
 
-export default function SubmissionAnswers({ question, admin, refreshKey }: { question: Question; admin: boolean; refreshKey: number }) {
+export default function SubmissionAnswers({ question, admin, refreshKey, onChange }: { question: Question; admin: boolean; refreshKey: number; onChange: () => Promise<void> }) {
   const [items, setItems] = useState<QuestionSubmission[] | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
   useEffect(() => {
     let active = true; setError('');
     api<{ submissions: QuestionSubmission[] }>(`${admin ? 'admin/' : ''}questions/${question.id}`)
       .then(r => { if (active) setItems(r.submissions); }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [question.id, question.submissionCount, admin, refreshKey, attempt]);
+  const matching = items?.filter(item => (filter === 'all' || (filter === 'pending' ? !item.answerStatus : item.answerStatus === filter)) && `${item.title} ${item.description} ${item.answer || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return <section className="submission-list"><div className="section-heading"><div><h3>취합된 요청 <span className="count-tag">{question.submissionCount}</span></h3><p>원문을 펼쳐 각 상황과 개별 답변을 확인하세요.</p></div></div>
-
+    <div className="q-filters"><label className="q-search"><Search size={17} /><input aria-label="취합된 원문 검색" placeholder="원문 내용과 개별 답변 검색" value={search} onChange={e => setSearch(e.target.value)} /></label><select aria-label="개별 답변 상태" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">모든 원문 ({items?.length ?? question.submissionCount})</option><option value="pending">개별 검토 대기 ({items?.filter(s => !s.answerStatus).length ?? 0})</option><option value="needs_clarification">추가 확인 요청 ({items?.filter(s => s.answerStatus === 'needs_clarification').length ?? 0})</option><option value="answered">개별 답변 등록 ({items?.filter(s => s.answerStatus === 'answered').length ?? 0})</option></select></div>
     {error && <div className="notice" role="alert">{error}<button className="text-button" onClick={() => setAttempt(n => n + 1)}>다시 불러오기</button></div>}
     {!items && !error && <p className="muted">원문을 불러오는 중…</p>}
-    {items?.map((item, index) => <SubmissionAnswer key={`${item.id}-${item.answerRevision}`} question={question} item={item} number={index + 1} admin={admin} onSaved={saved => setItems(list => list!.map(s => s.id === saved.id ? saved : s))} />)}
+    {items && matching?.length === 0 && <p className="muted" role="status">조건에 맞는 원문이 없어요. 검색어나 답변 상태를 변경해 주세요.</p>}
+    {items?.map((item, index) => <div key={`${item.id}-${item.answerRevision}`} hidden={!matching?.includes(item)}><SubmissionAnswer question={question} item={item} number={index + 1} admin={admin} onSaved={saved => { setItems(list => list!.map(s => s.id === saved.id ? saved : s)); void onChange(); }} /></div>)}
   </section>;
 }
 

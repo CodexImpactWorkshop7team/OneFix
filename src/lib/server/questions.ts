@@ -13,6 +13,8 @@ async function list(clientId: string): Promise<Question[]> {
     q.answered_at AS answeredAt,q.created_at AS createdAt,q.updated_at AS updatedAt,
     (SELECT COUNT(*) FROM question_participations p WHERE p.question_id=q.id) AS interestedCount,
     (SELECT COUNT(*) FROM question_submissions s WHERE s.question_id=q.id) AS submissionCount,
+    (SELECT COUNT(*) FROM question_submissions s JOIN question_submission_answers a ON a.submission_id=s.id WHERE s.question_id=q.id AND a.status='answered') AS answeredSubmissionCount,
+    (SELECT COUNT(*) FROM question_submissions s JOIN question_submission_answers a ON a.submission_id=s.id WHERE s.question_id=q.id AND a.status='needs_clarification') AS clarificationCount,
     EXISTS(SELECT 1 FROM question_participations p WHERE p.question_id=q.id AND p.client_id=?) AS hasParticipated
     FROM questions q ORDER BY interestedCount DESC,q.created_at,q.id`, clientId))
     .map(q => ({ ...q, hasParticipated: Boolean(q.hasParticipated) }));
