@@ -15,7 +15,7 @@
 | QR | URL에서 생성하는 QR 라이브러리 | 외부 QR 서비스 불필요 |
 | 테스트 | Vitest로 도메인 규칙·DB 통합 검증 | UI 스냅샷보다 병합·인원·예측 경계 검증 |
 
-라이브러리의 정확한 버전은 초기화 담당 B가 실행 가능한 조합으로 설치한 뒤 `package-lock.json`과 Node 버전 파일 `.nvmrc`에 고정한다. 두 명 모두 npm을 사용하고 초기화 이후에는 `npm ci`로 맞춘다. 설치된 Next.js·SQLite 드라이버가 선택한 Node 버전을 지원하는지 최초 실행에서 확인한다.
+한 맥북의 작업 폴더에서 실행 가능한 라이브러리 조합을 설치한 뒤 `package-lock.json`과 Node 버전 파일 `.nvmrc`에 고정한다. 패키지 관리자는 npm으로 통일하고 재설치 시 `npm ci`를 사용한다. 설치된 Next.js·SQLite 드라이버가 선택한 Node 버전을 지원하는지 최초 실행에서 확인한다.
 
 ## 목표 폴더
 
@@ -67,17 +67,18 @@ DB·파일·API 키를 다루는 코드는 서버 전용으로 제한한다. 사
 
 | 명령 | 구현할 동작 |
 | --- | --- |
-| `npm ci` | 공유된 lockfile 기반 설치 |
+| `npm ci` | 저장소의 lockfile 기반 설치 |
 | `npm run db:init` | 없는 DB에 스키마 생성, 기존 데이터는 삭제하지 않음 |
 | `npm run db:seed` | 고정 시설 3개만 없는 경우 추가, 기존 이력 유지 |
 | `npm run db:seed:demo -- --reset` | 명시적 reset 옵션으로 로컬 DB·업로드 초기화, 합성 이력 생성 |
-| `npm run dev -- --hostname 0.0.0.0` | 같은 Wi-Fi에서 접속하는 시연 서버 |
+| `npm run dev` | 한 맥북에서 사용할 개발·시연 서버 |
+| `npm run dev -- --hostname 0.0.0.0` | 선택: 같은 Wi-Fi의 별도 기기에서 QR 접속 검증 |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | 프로젝트의 ESLint CLI 실행 |
 | `npm test` | 도메인 규칙·DB·예측 테스트, 실제 AI 호출 제외 |
 | `npm run build` | 프로덕션 빌드 검증 |
 
-공유 전 순서: 환경 변수 설정 → DB 초기화·시드 → dev 실행 → 두 브라우저와 휴대폰 접속 확인. 데모 초기화는 개발 서버를 중지하고 수행한다.
+실행 순서: 환경 변수 설정 → DB 초기화·시드 → dev 실행 → 같은 맥북의 두 브라우저 프로필로 접속 확인. 별도 휴대폰이 있으면 같은 Wi-Fi에서 QR 접속도 확인한다. 데모 초기화는 개발 서버를 중지하고 수행한다.
 
 ## 쓰기와 동시성
 
